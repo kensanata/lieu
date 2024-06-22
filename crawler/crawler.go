@@ -97,7 +97,7 @@ func getDomains(links []string) ([]string, []string) {
 			continue
 		}
 		domains = append(domains, u.Hostname())
-		if len(u.Path) > 0 && (u.Path != "/" || u.Path != "index.html") {
+		if len(u.Path) > 0 && u.Path != "/" && u.Path != "index.html" {
 			pathsites = append(pathsites, l)
 		}
 	}
