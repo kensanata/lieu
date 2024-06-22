@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -253,6 +255,22 @@ func WriteTheme(config types.Config) {
 	util.Check(err)
 }
 
+// When stdin is a socket, getListener returns a listener that listens on the socket passed as stdin. This allows
+// systemd-style socket activation. Otherwise, getListener returns a net.Listener listening on the port defined in the
+// config file, config.General.Port.
+func getListener(port int) (net.Listener, error) {
+	stat, err := os.Stdin.Stat()
+	if stat == nil {
+		return nil, err
+	}
+	if stat.Mode().Type() == fs.ModeSocket {
+		// Listening socket passed on stdin, through systemd socket activation or similar:
+		fmt.Println("Serving a site on a listening socket passed by systemd.")
+		return net.FileListener(os.Stdin)
+	}
+	return net.Listen("tcp", fmt.Sprintf(":%d", port))
+}
+
 func Serve(config types.Config) {
 	WriteTheme(config)
 	db := database.InitDB(config.Data.Database)
@@ -270,8 +288,14 @@ func Serve(config types.Config) {
 	http.Handle("/assets/", fileserver)
 	http.Handle("/robots.txt", fileserver)
 
-	portstr := fmt.Sprintf(":%d", config.General.Port)
-	fmt.Println("Listening on port: ", portstr)
-
-	http.ListenAndServe(portstr, nil)
+	listener, err := getListener(config.General.Port)
+	if listener == nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println("Listening on: ", listener.Addr())
+		err := http.Serve(listener, nil)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
 }
